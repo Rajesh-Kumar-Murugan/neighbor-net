@@ -1,16 +1,21 @@
 import {
   Button,
+  Card,
   Center,
   Group,
   keys,
-  MultiSelect,
+  Autocomplete,
+  Pagination,
   ScrollArea,
+  SimpleGrid,
   Space,
+  Stack,
   Table,
   Text,
   TextInput,
   UnstyledButton,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconChevronDown, IconChevronUp, IconSearch, IconSelector } from '@tabler/icons-react';
 import { useState } from 'react';
 import classes from './styles.module.css';
@@ -189,39 +194,58 @@ const categories = [
 
 export function ContactsTable() {
   const [search, setSearch] = useState('');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
   const [sortedData, setSortedData] = useState(data);
   const [sortBy, setSortBy] = useState<keyof RowData | null>(null);
   const [reverseSortDirection, setReverseSortDirection] = useState(false);
 
-  const getFilteredDataByCategories = (categories: string[]) => {
-    return data.filter((item) =>
-      categories.length === 0 ? true : categories.every((val) => item.categories.includes(val))
-    );
+  const PAGE_SIZE = 5;
+  const [page, setPage] = useState(1);
+
+
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
+  const getFilteredDataByCategory = (category: string | undefined) => {
+    if (!category) return data;
+    return data.filter((item) => item.categories.includes(category));
   };
+
 
   const setSorting = (field: keyof RowData) => {
     const reversed = field === sortBy ? !reverseSortDirection : false;
     setReverseSortDirection(reversed);
     setSortBy(field);
-    const categoryFilteredData = getFilteredDataByCategories(selectedCategories);
+    const categoryFilteredData = getFilteredDataByCategory(selectedCategory);
     setSortedData(sortData(categoryFilteredData, { sortBy: field, reversed, search }));
   };
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { value } = event.currentTarget;
     setSearch(value);
-    const categoryFilteredData = getFilteredDataByCategories(selectedCategories);
+    setPage(1);
+    const categoryFilteredData = getFilteredDataByCategory(selectedCategory);
     setSortedData(sortData(categoryFilteredData, { sortBy, reversed: reverseSortDirection, search: value }));
   };
 
-  const handleCategoriesChange = (values: string[]) => {
-    setSelectedCategories(values);
-    const filteredData = getFilteredDataByCategories(values);
-    setSortedData(sortData(filteredData, { sortBy, reversed: reverseSortDirection, search }));
+  const handleCategoryChange = (value: string | undefined) => {
+    setSelectedCategory(value);
+    setPage(1);
+    const filteredData = getFilteredDataByCategory(value);
+    setSortedData(
+      sortData(filteredData, {
+        sortBy,
+        reversed: reverseSortDirection,
+        search,
+      })
+    );
   };
 
-  const rows = sortedData.map((row) => (
+  const paginatedData = sortedData.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE
+  );
+
+  const rows = paginatedData.map((row) => (
     <Table.Tr key={row.name} ta="left">
       <Table.Td>{row.name}</Table.Td>
       <Table.Td>
@@ -246,72 +270,112 @@ export function ContactsTable() {
   ));
 
   return (
-    <ScrollArea>
-      <Group mb="md" gap="lg" justify="space-between" grow>
-        <MultiSelect
-          placeholder="Select categories"
-          data={categories}
-          value={selectedCategories}
-          onChange={handleCategoriesChange}
+    <ScrollArea type="auto" scrollbarSize={6}>
+      <SimpleGrid
+        cols={{ base: 1, sm: 2, md: 3 }}
+        spacing="md"
+        mb="md"
+      >
+        <Autocomplete
+          placeholder="Category"
+          data={categories.map((c) => c.label)}
+          value={selectedCategory}
+          onChange={handleCategoryChange}
           clearable
-          searchable
         />
+
         <TextInput
           placeholder="Search by any field"
           leftSection={<IconSearch size={16} stroke={1.5} />}
           value={search}
           onChange={handleSearchChange}
         />
-        <Button onClick={() => { }}>Add Contact</Button>
 
-      </Group>
-      <Table horizontalSpacing="md" verticalSpacing="xs" miw={700} layout="fixed" stickyHeader>
-        <Table.Tbody color="">
-          <Table.Tr>
-            <Th
-              sorted={sortBy === 'name'}
-              reversed={reverseSortDirection}
-              onSort={() => setSorting('name')}
-            >
-              Name
-            </Th>
-            <Th
-              sorted={sortBy === 'contact'}
-              reversed={reverseSortDirection}
-              onSort={() => setSorting('contact')}
-            >
-              Contact
-            </Th>
-            <Th
-              sorted={sortBy === 'company'}
-              reversed={reverseSortDirection}
-              onSort={() => setSorting('company')}
-            >
-              Company
-            </Th>
-            <Th
-              sorted={sortBy === 'categories'}
-              reversed={reverseSortDirection}
-              onSort={() => setSorting('categories')}
-            >
-              Categories
-            </Th>
-          </Table.Tr>
-        </Table.Tbody>
-        <Table.Tbody>
-          {rows.length > 0 ? (
-            rows
-          ) : (
-            <Table.Tr>
-              <Table.Td colSpan={Object.keys(data[0]).length}>
-                <Text fw={500} ta="center">
-                  Nothing found
+        <Button fullWidth>Add Contact</Button>
+      </SimpleGrid>
+
+      {isMobile ? (
+        <Stack>
+          {paginatedData.map((row) => (
+            <Card key={row.id} withBorder>
+              <Text fw={600}>{row.name}</Text>
+              <Text size="sm">{row.company}</Text>
+              {row.contact.map((c) => (
+                <Text key={c} c="blue" component="a" href={`tel:${c}`}>
+                  {c}
                 </Text>
-              </Table.Td>
-            </Table.Tr>
+              ))}
+              <Text size="sm">{row.categories.join(', ') || 'No categories'}</Text>
+            </Card>
+          ))}
+
+          {sortedData.length > PAGE_SIZE && (
+            <Pagination
+              value={page}
+              onChange={setPage}
+              total={Math.ceil(sortedData.length / PAGE_SIZE)}
+              withEdges
+              mt="md"
+            />
           )}
-        </Table.Tbody>
-      </Table>
+        </Stack>
+      ) : (
+        <>
+          <Table horizontalSpacing="md" verticalSpacing="sm" miw={900} layout="fixed" stickyHeader>
+            <Table.Tbody color="">
+              <Table.Tr>
+                <Th
+                  sorted={sortBy === 'name'}
+                  reversed={reverseSortDirection}
+                  onSort={() => setSorting('name')}
+                >
+                  Name
+                </Th>
+                <Th
+                  sorted={sortBy === 'contact'}
+                  reversed={reverseSortDirection}
+                  onSort={() => setSorting('contact')}
+                >
+                  Contact
+                </Th>
+                <Th
+                  sorted={sortBy === 'company'}
+                  reversed={reverseSortDirection}
+                  onSort={() => setSorting('company')}
+                >
+                  Company
+                </Th>
+                <Th
+                  sorted={sortBy === 'categories'}
+                  reversed={reverseSortDirection}
+                  onSort={() => setSorting('categories')}
+                >
+                  Categories
+                </Th>
+              </Table.Tr>
+            </Table.Tbody>
+            <Table.Tbody>
+              {rows.length > 0 ? (
+                rows
+              ) : (
+                <Table.Tr>
+                  <Table.Td colSpan={Object.keys(data[0]).length}>
+                    <Text fw={500} ta="center">
+                      Nothing found
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+          <Pagination
+            value={page}
+            onChange={setPage}
+            total={Math.ceil(sortedData.length / PAGE_SIZE)}
+            mt="md"
+            withEdges
+          />
+        </>)}
     </ScrollArea>
   );
 }
